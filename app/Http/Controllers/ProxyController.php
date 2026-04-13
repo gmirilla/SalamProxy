@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
 class ProxyController extends Controller
@@ -63,6 +64,58 @@ class ProxyController extends Controller
 
         return response($response->body(), $response->status())
             ->header('Content-Type', 'application/json');
+    }
+
+    // ── Elite DB ──────────────────────────────────────────────────────────────
+
+    /**
+     * GET /api/claim/check?number=...
+     * Queries the Elite PostgreSQL DB for a claim or policy number.
+     * Namecheap blocks outbound port 5432 — this runs from the Nigerian VPS instead.
+     */
+    public function claimCheck(Request $request)
+    {
+        $request->validate(['number' => 'required|string']);
+
+        $number = $request->query('number');
+
+        try {
+            $results = DB::connection('Elite')
+                ->table('epgi_claim as e')
+                ->join('epgi_policy as p', 'e.policy_id', '=', 'p.id')
+                ->select(
+                    'p.policy_no',
+                    'e.claim_no',
+                    'e.description',
+                    'e.state',
+                    'e.loss_date',
+                    'e.notification_date'
+                )
+                ->where('e.claim_no', $number)
+                ->orWhere('p.policy_no', $number)
+                ->orderBy('e.loss_date', 'desc')
+                ->get();
+        } catch (\Exception $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Elite DB query failed: ' . $e->getMessage(),
+                'data'    => [],
+            ], 502);
+        }
+
+        if ($results->isEmpty()) {
+            return response()->json([
+                'status'  => 'not_found',
+                'message' => 'No claim found for the provided number.',
+                'data'    => [],
+            ]);
+        }
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Claim retrieved successfully.',
+            'data'    => $results->count() === 1 ? $results->first() : $results,
+        ]);
     }
 
     // ── Add other blocked API calls below as needed ───────────────────────────
