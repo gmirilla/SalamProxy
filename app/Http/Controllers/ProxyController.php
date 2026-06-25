@@ -118,6 +118,58 @@ class ProxyController extends Controller
         ]);
     }
 
+    // ── Elite Policy Customer Lookup ──────────────────────────────────────────
+
+    /**
+     * GET /api/v1/policy/customer-lookup?policy_no=...&phone=...
+     * Unauthenticated. Looks up an approved policy by number, then verifies
+     * the caller's phone matches the insured's phone stored in Elite.
+     */
+    public function policyCustomerLookup(Request $request)
+    {
+        $request->validate([
+            'policy_no' => 'required|string',
+            'phone'     => 'required|string',
+        ]);
+
+        $policyNo = $request->query('policy_no');
+        $phone    = $request->query('phone');
+
+        try {
+            $row = DB::connection('Elite')
+                ->table('epgi_policy as p')
+                ->join('res_partner as i',       'p.insured_id',      '=', 'i.id')
+                ->join('product_product as pr',  'p.product_id',      '=', 'pr.id')
+                ->join('product_template as pt', 'pr.product_tmpl_id','=', 'pt.id')
+                ->select(
+                    'p.policy_no',
+                    'pt.name as policy_type',
+                    'p.date_from',
+                    'p.date_to',
+                    'i.phone'
+                )
+                ->where('p.policy_no', $policyNo)
+                ->where('p.state', 'approved')
+                ->first();
+        } catch (\Exception) {
+            return response()->json(['found' => false], 502);
+        }
+
+        if (!$row || $row->phone !== $phone) {
+            return response()->json(['found' => false]);
+        }
+
+        return response()->json([
+            'found' => true,
+            'data'  => [
+                'policy_no'   => $row->policy_no,
+                'policy_type' => $row->policy_type,
+                'start_date'  => $row->date_from,
+                'end_date'    => $row->date_to,
+            ],
+        ]);
+    }
+
     // ── Add other blocked API calls below as needed ───────────────────────────
     // Each method follows the same pattern:
     //   1. Call $this->httpClient()->...

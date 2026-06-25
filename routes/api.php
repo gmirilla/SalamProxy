@@ -3,6 +3,9 @@
 use App\Http\Controllers\ProxyController;
 use Illuminate\Support\Facades\Route;
 
+// ── Unauthenticated ─────────────────────────────────────
+Route::get('/v1/policy/customer-lookup', [ProxyController::class, 'policyCustomerLookup']);
+
 Route::middleware('proxy.auth')->group(function () {
 
     // ── eCMR (NPF) ──────────────────────────────────────────
