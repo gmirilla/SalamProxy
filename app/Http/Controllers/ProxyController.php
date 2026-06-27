@@ -122,18 +122,21 @@ class ProxyController extends Controller
 
     /**
      * GET /api/v1/policy/customer-lookup?policy_no=...&phone=...
+     * GET /api/v1/policy/customer-lookup?policy_no=...&email=...
      * Unauthenticated. Looks up an approved policy by number, then verifies
-     * the caller's phone matches the insured's phone stored in Elite.
+     * the caller's phone or email matches the insured record in Elite.
      */
     public function policyCustomerLookup(Request $request)
     {
         $request->validate([
             'policy_no' => 'required|string',
-            'phone'     => 'required|string',
+            'phone'     => 'required_without:email|string',
+            'email'     => 'required_without:phone|email',
         ]);
 
         $policyNo = $request->query('policy_no');
         $phone    = $request->query('phone');
+        $email    = $request->query('email');
 
         try {
             $row = DB::connection('Elite')
@@ -146,7 +149,8 @@ class ProxyController extends Controller
                     'pt.name as policy_type',
                     'p.date_from',
                     'p.date_to',
-                    'i.phone'
+                    'i.phone',
+                    'i.email'
                 )
                 ->where('p.policy_no', $policyNo)
                 ->where('p.state', 'approved')
@@ -155,7 +159,12 @@ class ProxyController extends Controller
             return response()->json(['found' => false], 502);
         }
 
-        if (!$row || $row->phone !== $phone) {
+        $verified = $row && (
+            ($phone && $row->phone === $phone) ||
+            ($email && $row->email === $email)
+        );
+
+        if (!$verified) {
             return response()->json(['found' => false]);
         }
 
