@@ -179,6 +179,86 @@ class ProxyController extends Controller
         ]);
     }
 
+    // ── Elite Brokers / Agents ────────────────────────────────────────────────
+
+    /**
+     * GET /api/elite/brokers
+     * Returns all broker and agent partner records from Elite.
+     */
+    public function brokerList()
+    {
+        try {
+            $rows = DB::connection('Elite')
+                ->table('res_partner')
+                ->select(
+                    'id as broker_id',
+                    'name',
+                    'website',
+                    'email',
+                    'phone', 'cust_type'
+                )
+                ->whereIn('cust_type', ['broker', 'agent'])
+                ->orderBy('name')
+                ->get();
+        } catch (\Exception $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Elite DB query failed: ' . $e->getMessage(),
+                'data'    => [],
+            ], 502);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $rows,
+        ]);
+    }
+
+    // ── Elite Broker Policies ─────────────────────────────────────────────────
+
+    /**
+     * GET /api/elite/broker/policies?broker_id=...
+     * Returns all policies underwritten through a specific broker/agent.
+     */
+    public function brokerPolicies(Request $request)
+    {
+        $request->validate(['broker_id' => 'required|integer']);
+
+        $brokerId = (int) $request->query('broker_id');
+
+        try {
+            $rows = DB::connection('Elite')
+                ->table('epgi_policy as p')
+                ->join('res_partner as i',        'p.insured_id',       '=', 'i.id')
+                ->join('product_product as prd',  'p.product_id',       '=', 'prd.id')
+                ->join('product_template as prt', 'prt.id',             '=', 'prd.product_tmpl_id')
+                ->select(
+                    'p.id as policy_id',
+                    'prt.name as product_type',
+                    'p.policy_no',
+                    'i.name',
+                    'p.date_from',
+                    'p.date_to',
+                    'p.actual_si_lc',
+                    'p.actual_gross_premium_lc'
+                )
+                ->where('p.agency_id', $brokerId)
+                ->orderBy('p.date_from', 'desc')
+                ->get();
+        } catch (\Exception $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Elite DB query failed: ' . $e->getMessage(),
+                'data'    => [],
+            ], 502);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $rows,
+        ]);
+    }
+
     // ── Add other blocked API calls below as needed ───────────────────────────
     // Each method follows the same pattern:
     //   1. Call $this->httpClient()->...

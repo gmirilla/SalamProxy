@@ -13,7 +13,9 @@ Route::middleware('proxy.auth')->group(function () {
     Route::get('/ecmr/lookup',  [ProxyController::class, 'ecmrLookup']);
 
     // ── Elite DB ────────────────────────────────────────────
-    Route::get('/claim/check', [ProxyController::class, 'claimCheck']);
+    Route::get('/claim/check',   [ProxyController::class, 'claimCheck']);
+    Route::get('/elite/brokers',          [ProxyController::class, 'brokerList']);
+    Route::get('/elite/broker/policies',  [ProxyController::class, 'brokerPolicies']);
 
     // ── Add other blocked API routes here ───────────────────
 
