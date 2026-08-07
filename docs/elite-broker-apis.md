@@ -1,10 +1,10 @@
 # Elite Broker APIs
 
 Both endpoints require authentication via the `proxy.auth` middleware.  
-Include the proxy API key in every request header:
+Include the proxy shared secret in every request header:
 
 ```
-X-Proxy-Key: <your-api-key>
+X-Proxy-Secret: <your-proxy-secret>
 ```
 
 ---

@@ -55,9 +55,15 @@ APP_DEBUG=false
 
 PROXY_SECRET=          # generate below — must match SalamOnline .env
 eMCR_URL=https://cmrapp.npf.gov.ng/
-eMCR_USERNAME=REDACTED_EMCR_USERNAME
-eMCR_PASSWORD=REDACTED_EMCR_PASSWORD
+eMCR_USERNAME=<<user_name>>
+eMCR_PASSWORD=<<secret>>
 ```
+
+> **Security note:** an earlier commit (`7119296`) in this repo's history contained the
+> real NPF eCMR username/password in plaintext. Rotate that NPF account's password if
+> you haven't already, and never put real secrets in tracked files — only in `.env`,
+> which is gitignored. Consider purging commit `7119296` from history (e.g. with
+> `git filter-repo`) if this repo has ever been shared or pushed anywhere.
 
 **Generate the shared secret** (run once, copy to both apps):
 ```bash

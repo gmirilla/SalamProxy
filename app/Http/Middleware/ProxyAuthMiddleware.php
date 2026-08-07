@@ -9,9 +9,13 @@ class ProxyAuthMiddleware
 {
     public function handle(Request $request, Closure $next)
     {
-        if ($request->header('X-Proxy-Secret') !== env('PROXY_SECRET')) {
+        $expected = config('proxy.secret');
+        $provided = $request->header('X-Proxy-Secret');
+
+        if (! is_string($expected) || $expected === '' || ! is_string($provided) || ! hash_equals($expected, $provided)) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
+
         return $next($request);
     }
 }

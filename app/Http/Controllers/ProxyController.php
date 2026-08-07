@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class ProxyController extends Controller
 {
@@ -21,6 +22,20 @@ class ProxyController extends Controller
             ]);
     }
 
+    /**
+     * Log the real exception server-side and return a generic message to the caller.
+     */
+    private function dbErrorResponse(\Exception $e, string $context): \Illuminate\Http\JsonResponse
+    {
+        Log::error("Elite DB query failed [{$context}]: " . $e->getMessage());
+
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Elite DB query failed.',
+            'data'    => [],
+        ], 502);
+    }
+
     // ── eCMR (NPF) ────────────────────────────────────────────────────────────
 
     /**
@@ -31,12 +46,14 @@ class ProxyController extends Controller
     {
         try {
             $response = $this->httpClient()
-                ->post(env('eMCR_URL') . 'api/apiuser/login', [
-                    'username' => env('eMCR_USERNAME'),
-                    'password' => env('eMCR_PASSWORD'),
+                ->post(config('proxy.ecmr.url') . 'api/apiuser/login', [
+                    'username' => config('proxy.ecmr.username'),
+                    'password' => config('proxy.ecmr.password'),
                 ]);
         } catch (\Illuminate\Http\Client\ConnectionException $e) {
-            return response()->json(['error' => 'eCMR login connection failed: ' . $e->getMessage()], 502);
+            Log::error('eCMR login connection failed: ' . $e->getMessage());
+
+            return response()->json(['error' => 'eCMR login connection failed.'], 502);
         }
 
         return response($response->body(), $response->status())
@@ -51,15 +68,19 @@ class ProxyController extends Controller
     {
         $request->validate([
             'token' => 'required|string',
-            'regno' => 'required|string',
+            'regno' => ['required', 'string', 'regex:/^[A-Za-z0-9\- ]+$/'],
         ]);
+
+        $regno = rawurlencode($request->query('regno'));
 
         try {
             $response = $this->httpClient()
                 ->withToken($request->query('token'))
-                ->get(env('eMCR_URL') . 'api/insurance/cmrisinfo/v1/license/' . $request->query('regno'));
+                ->get(config('proxy.ecmr.url') . 'api/insurance/cmrisinfo/v1/license/' . $regno);
         } catch (\Illuminate\Http\Client\ConnectionException $e) {
-            return response()->json(['error' => 'eCMR lookup connection failed: ' . $e->getMessage()], 502);
+            Log::error('eCMR lookup connection failed: ' . $e->getMessage());
+
+            return response()->json(['error' => 'eCMR lookup connection failed.'], 502);
         }
 
         return response($response->body(), $response->status())
@@ -96,11 +117,7 @@ class ProxyController extends Controller
                 ->orderBy('e.loss_date', 'desc')
                 ->get();
         } catch (\Exception $e) {
-            return response()->json([
-                'status'  => 'error',
-                'message' => 'Elite DB query failed: ' . $e->getMessage(),
-                'data'    => [],
-            ], 502);
+            return $this->dbErrorResponse($e, 'claimCheck');
         }
 
         if ($results->isEmpty()) {
@@ -123,8 +140,8 @@ class ProxyController extends Controller
     /**
      * GET /api/v1/policy/customer-lookup?policy_no=...&phone=...
      * GET /api/v1/policy/customer-lookup?policy_no=...&email=...
-     * Unauthenticated. Looks up an approved policy by number, then verifies
-     * the caller's phone or email matches the insured record in Elite.
+     * Unauthenticated (rate-limited). Looks up an approved policy by number,
+     * then verifies the caller's phone or email matches the insured record in Elite.
      */
     public function policyCustomerLookup(Request $request)
     {
@@ -155,7 +172,9 @@ class ProxyController extends Controller
                 ->where('p.policy_no', $policyNo)
                 ->where('p.state', 'approved')
                 ->first();
-        } catch (\Exception) {
+        } catch (\Exception $e) {
+            Log::error('Elite DB query failed [policyCustomerLookup]: ' . $e->getMessage());
+
             return response()->json(['found' => false], 502);
         }
 
@@ -201,11 +220,7 @@ class ProxyController extends Controller
                 ->orderBy('name')
                 ->get();
         } catch (\Exception $e) {
-            return response()->json([
-                'status'  => 'error',
-                'message' => 'Elite DB query failed: ' . $e->getMessage(),
-                'data'    => [],
-            ], 502);
+            return $this->dbErrorResponse($e, 'brokerList');
         }
 
         return response()->json([
@@ -246,11 +261,7 @@ class ProxyController extends Controller
                 ->orderBy('p.date_from', 'desc')
                 ->get();
         } catch (\Exception $e) {
-            return response()->json([
-                'status'  => 'error',
-                'message' => 'Elite DB query failed: ' . $e->getMessage(),
-                'data'    => [],
-            ], 502);
+            return $this->dbErrorResponse($e, 'brokerPolicies');
         }
 
         return response()->json([

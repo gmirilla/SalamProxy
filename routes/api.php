@@ -4,9 +4,13 @@ use App\Http\Controllers\ProxyController;
 use Illuminate\Support\Facades\Route;
 
 // ── Unauthenticated ─────────────────────────────────────
-Route::get('/v1/policy/customer-lookup', [ProxyController::class, 'policyCustomerLookup']);
+// Tightly throttled: this is the one route the public can hit directly
+// against the Elite DB, so it needs its own brute-force guard.
+Route::middleware('throttle:10,1')->group(function () {
+    Route::get('/v1/policy/customer-lookup', [ProxyController::class, 'policyCustomerLookup']);
+});
 
-Route::middleware('proxy.auth')->group(function () {
+Route::middleware(['proxy.auth', 'throttle:60,1'])->group(function () {
 
     // ── eCMR (NPF) ──────────────────────────────────────────
     Route::post('/ecmr/login',  [ProxyController::class, 'ecmrLogin']);
