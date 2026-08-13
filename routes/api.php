@@ -21,6 +21,9 @@ Route::middleware(['proxy.auth', 'throttle:60,1'])->group(function () {
     Route::get('/elite/brokers',          [ProxyController::class, 'brokerList']);
     Route::get('/elite/broker/policies',  [ProxyController::class, 'brokerPolicies']);
 
+    // ── Elite Policy Risk Update ─────────────────────────────
+    Route::post('/elite/policy/risk/cert-airworthiness', [ProxyController::class, 'updatePolicyRiskAirworthiness']);
+
     // ── Add other blocked API routes here ───────────────────
 
 });

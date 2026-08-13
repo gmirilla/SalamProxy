@@ -123,6 +123,13 @@ return [
             'handler' => NullHandler::class,
         ],
 
+        'eliteupdate' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/eliteupdate.log'),
+            'level' => 'info',
+            'replace_placeholders' => true,
+        ],
+
         'emergency' => [
             'path' => storage_path('logs/laravel.log'),
         ],

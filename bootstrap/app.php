@@ -13,7 +13,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
-            'proxy.auth' => \App\Http\Middleware\ProxyAuthMiddleware::class,
+            'proxy.auth'    => \App\Http\Middleware\ProxyAuthMiddleware::class,
+            'auditlog.auth' => \App\Http\Middleware\AuditLogAuthMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
