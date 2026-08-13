@@ -162,7 +162,7 @@ class ProxyController extends Controller
                 ->join('product_product as pr',  'p.product_id',      '=', 'pr.id')
                 ->join('product_template as pt', 'pr.product_tmpl_id','=', 'pt.id')
                 ->select(
-                    'p.policy_no',
+                    'p.policy_no', 'i.name',
                     'pt.name as policy_type',
                     'p.date_from',
                     'p.date_to',
@@ -193,6 +193,9 @@ class ProxyController extends Controller
                 'policy_no'   => $row->policy_no,
                 'policy_type' => $row->policy_type,
                 'start_date'  => $row->date_from,
+                'name'=> $row->name,
+                'email'=> $row->email,
+                'phone'=> $row->phone,
                 'end_date'    => $row->date_to,
             ],
         ]);
