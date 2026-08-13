@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git rev-list *)",
+      "Bash(git push *)",
+      "Bash(git show *)",
+      "Read(//tmp/**)",
+      "Bash(php -r \"echo bin2hex\\(random_bytes\\(16\\)\\) . PHP_EOL;\")",
+      "Bash(php artisan *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://127.0.0.1:8123/elite/updates)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" -u audit_admin:wrongpass http://127.0.0.1:8123/elite/updates)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" -u audit_admin:3c4a6513c8057a6770ddb8db70ae0416 http://127.0.0.1:8123/elite/updates)",
+      "Bash(kill %1)"
+    ]
+  }
+}

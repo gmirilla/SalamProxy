@@ -1,11 +1,13 @@
-# Elite Broker APIs
+# Elite Broker & Policy APIs
 
-Both endpoints require authentication via the `proxy.auth` middleware.  
+Endpoints **1** and **2** require authentication via the `proxy.auth` middleware.  
 Include the proxy shared secret in every request header:
 
 ```
 X-Proxy-Secret: <your-proxy-secret>
 ```
+
+Endpoint **3** (Policy Customer Lookup) is **unauthenticated** — no header needed.
 
 ---
 
@@ -143,10 +145,91 @@ Returned when `broker_id` is missing or not an integer.
 
 ---
 
+## 3. Policy Customer Lookup
+
+Lets a customer verify their own policy using their policy number plus either their phone or email. **No authentication header required.**
+
+### Request
+
+```
+GET /api/v1/policy/customer-lookup?policy_no=SLM/MTR/2025/00123&phone=08012345678
+```
+
+or with email instead:
+
+```
+GET /api/v1/policy/customer-lookup?policy_no=SLM/MTR/2025/00123&email=john.doe@example.com
+```
+
+| Parameter   | Type   | Required             | Description                              |
+|-------------|--------|----------------------|------------------------------------------|
+| `policy_no` | string | Yes                  | The policy number to look up             |
+| `phone`     | string | Yes (if no `email`)  | Insured's phone number stored in Elite   |
+| `email`     | string | Yes (if no `phone`)  | Insured's email address stored in Elite  |
+
+At least one of `phone` or `email` must be supplied. Both may be sent; either matching is sufficient.
+
+### Success Response `200` — Policy found and identity verified
+
+```json
+{
+  "found": true,
+  "data": {
+    "policy_no": "SLM/MTR/2025/00123",
+    "policy_type": "Motor Comprehensive",
+    "start_date": "2025-01-15",
+    "end_date": "2026-01-14"
+  }
+}
+```
+
+### Not Found / Mismatch Response `200`
+
+Returned when the policy does not exist, is not in `approved` state, or the phone/email does not match the insured record.
+
+```json
+{
+  "found": false
+}
+```
+
+### Validation Error `422`
+
+Returned when `policy_no` is missing or neither `phone` nor `email` is provided.
+
+```json
+{
+  "message": "The phone field is required when email is not present.",
+  "errors": {
+    "phone": ["The phone field is required when email is not present."],
+    "email": ["The email field is required when phone is not present."]
+  }
+}
+```
+
+### Error Response `502`
+
+Returned when the Elite DB is unreachable.
+
+```json
+{
+  "found": false
+}
+```
+
+---
+
 ## Typical Usage Flow
-Scenario A. Administrator grants broker acess to to system
-  1. Call **List Brokers** to get the `broker_id` for the broker you want.
 
-  2. Pass that `broker_id` to **Policies by Broker** to retrieve their portfolio.
+### Scenario A — Administrator onboards a broker
 
-  3. Create Broker Account with list of all  policies
+1. Call **List Brokers** (`GET /api/elite/brokers`) to retrieve all brokers and their `broker_id`.
+2. Pass the `broker_id` to **Policies by Broker** (`GET /api/elite/broker/policies?broker_id=14`) to load their full policy portfolio.
+3. Create the broker's system account and associate the returned policies with it.
+
+### Scenario B — Customer self-service policy check
+
+1. Customer enters their policy number and either their phone or email in the portal.
+2. Call **Policy Customer Lookup** (`GET /api/v1/policy/customer-lookup?policy_no=...&phone=...`).
+3. If `found: true`, display the policy details to the customer.
+4. If `found: false`, prompt the customer to check their details or contact support.
