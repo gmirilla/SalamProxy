@@ -23,6 +23,7 @@ Route::middleware(['proxy.auth', 'throttle:60,1'])->group(function () {
 
     // ── Elite Policy Risk Update ─────────────────────────────
     Route::post('/elite/policy/risk/cert-airworthiness', [ProxyController::class, 'updatePolicyRiskAirworthiness']);
+    Route::post('/elite/policy/risk/cert-airworthiness/batch', [ProxyController::class, 'updatePolicyRiskAirworthinessBatch']);
 
     // ── Add other blocked API routes here ───────────────────
 

@@ -29,6 +29,7 @@
                     <th>Timestamp</th>
                     <th>IP</th>
                     <th>Policy No</th>
+                    <th>Item ID</th>
                     <th>Old Value</th>
                     <th>New Value</th>
                     <th>Result</th>
@@ -41,6 +42,7 @@
                         <td>{{ $entry['timestamp'] }}</td>
                         <td>{{ $entry['ip'] }}</td>
                         <td>{{ $entry['policy_no'] }}</td>
+                        <td>{{ $entry['item_id'] }}</td>
                         <td>{{ $entry['old_value'] }}</td>
                         <td>{{ $entry['new_value'] }}</td>
                         <td class="result-{{ $entry['result'] }}">{{ $entry['result'] }}</td>

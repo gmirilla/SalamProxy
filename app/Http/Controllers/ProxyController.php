@@ -276,99 +276,133 @@ class ProxyController extends Controller
     // ── Elite Policy Risk Update ────────────────────────────────────────────────
 
     /**
+     * Strips everything but letters/digits and uppercases, so item_id/registration
+     * numbers can be compared regardless of spacing, punctuation, or casing.
+     */
+    private function cleanIdentifier(string $value): string
+    {
+        return strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $value));
+    }
+
+    /**
+     * Looks up the risk row for a policy and updates cert_airworthiness_no.
+     * When $itemId is null, matches on policy_id alone (the original single-risk
+     * Aviation behavior). When $itemId is given, matches policy_id + a
+     * cleaned/case-insensitive comparison against epgi_policy_risk.item_id, so a
+     * Motor policy with several vehicles can be disambiguated by registration
+     * number. Refuses to write when the policy/risk isn't found or more than one
+     * risk row matches. Every attempt is written to the eliteupdate log channel.
+     */
+    private function applyCertAirworthinessUpdate(string $policyNo, ?string $itemId, string $newValue, string $ip): array
+    {
+        return DB::connection('Elite')->transaction(function () use ($policyNo, $itemId, $newValue, $ip) {
+            $policy = DB::connection('Elite')
+                ->table('epgi_policy')
+                ->select('id')
+                ->where('policy_no', $policyNo)
+                ->first();
+
+            if (!$policy) {
+                Log::channel('eliteupdate')->info('policy_risk_cert_airworthiness_update', [
+                    'ip'        => $ip,
+                    'policy_no' => $policyNo,
+                    'item_id'   => $itemId,
+                    'result'    => 'policy_not_found',
+                ]);
+
+                return ['status' => 'not_found', 'message' => 'No policy found for the provided policy number.'];
+            }
+
+            $risks = DB::connection('Elite')
+                ->table('epgi_policy_risk')
+                ->select('id', 'item_id', 'cert_airworthiness_no')
+                ->where('policy_id', $policy->id)
+                ->lockForUpdate()
+                ->get();
+
+            if ($itemId !== null && $itemId !== '') {
+                $cleanedItemId = $this->cleanIdentifier($itemId);
+                $risks = $risks->filter(fn ($risk) => $this->cleanIdentifier((string) $risk->item_id) === $cleanedItemId);
+            }
+
+            if ($risks->isEmpty()) {
+                Log::channel('eliteupdate')->info('policy_risk_cert_airworthiness_update', [
+                    'ip'        => $ip,
+                    'policy_no' => $policyNo,
+                    'policy_id' => $policy->id,
+                    'item_id'   => $itemId,
+                    'result'    => 'risk_not_found',
+                ]);
+
+                return ['status' => 'not_found', 'message' => 'No risk record found for this policy' . ($itemId !== null && $itemId !== '' ? '/item combination.' : '.')];
+            }
+
+            if ($risks->count() > 1) {
+                Log::channel('eliteupdate')->info('policy_risk_cert_airworthiness_update', [
+                    'ip'        => $ip,
+                    'policy_no' => $policyNo,
+                    'policy_id' => $policy->id,
+                    'item_id'   => $itemId,
+                    'risk_ids'  => $risks->pluck('id'),
+                    'result'    => 'ambiguous',
+                ]);
+
+                return ['status' => 'conflict', 'message' => 'Multiple risk records found for this policy; cannot determine which to update.'];
+            }
+
+            $risk = $risks->first();
+
+            DB::connection('Elite')
+                ->table('epgi_policy_risk')
+                ->where('id', $risk->id)
+                ->update(['cert_airworthiness_no' => $newValue]);
+
+            Log::channel('eliteupdate')->info('policy_risk_cert_airworthiness_update', [
+                'ip'        => $ip,
+                'policy_no' => $policyNo,
+                'policy_id' => $policy->id,
+                'item_id'   => $itemId,
+                'risk_id'   => $risk->id,
+                'old_value' => $risk->cert_airworthiness_no,
+                'new_value' => $newValue,
+                'result'    => 'success',
+            ]);
+
+            return [
+                'status'  => 'success',
+                'message' => 'Airworthiness certificate number updated.',
+                'data'    => ['policy_no' => $policyNo, 'item_id' => $itemId, 'cert_airworthiness_no' => $newValue],
+            ];
+        });
+    }
+
+    /**
      * POST /api/elite/policy/risk/cert-airworthiness
-     * Body: { "policy_no": "...", "cert_airworthiness_no": "..." }
-     * Updates epgi_policy_risk.cert_airworthiness_no for the risk row belonging
-     * to the given policy. Refuses to write if the policy isn't found, no risk
-     * row exists, or more than one risk row matches (ambiguous). Every attempt
-     * is written to the eliteupdate log channel for audit purposes.
+     * Body: { "policy_no": "...", "item_id": "...", "cert_airworthiness_no": "..." }
+     * item_id is optional — omit it for the original single-risk-per-policy
+     * behavior; include it (a registration number) to disambiguate one of
+     * several risk rows on the same policy.
      */
     public function updatePolicyRiskAirworthiness(Request $request)
     {
         $request->validate([
             'policy_no'             => 'required|string',
+            'item_id'               => 'nullable|string|max:255',
             'cert_airworthiness_no' => 'required|string|max:255',
         ]);
 
-        $policyNo = $request->input('policy_no');
-        $newValue = $request->input('cert_airworthiness_no');
-        $ip       = $request->ip();
-
         try {
-            $result = DB::connection('Elite')->transaction(function () use ($policyNo, $newValue, $ip) {
-                $policy = DB::connection('Elite')
-                    ->table('epgi_policy')
-                    ->select('id')
-                    ->where('policy_no', $policyNo)
-                    ->first();
-
-                if (!$policy) {
-                    Log::channel('eliteupdate')->info('policy_risk_cert_airworthiness_update', [
-                        'ip'        => $ip,
-                        'policy_no' => $policyNo,
-                        'result'    => 'policy_not_found',
-                    ]);
-
-                    return ['status' => 'not_found', 'message' => 'No policy found for the provided policy number.'];
-                }
-
-                $risks = DB::connection('Elite')
-                    ->table('epgi_policy_risk')
-                    ->select('id', 'cert_airworthiness_no')
-                    ->where('policy_id', $policy->id)
-                    ->lockForUpdate()
-                    ->get();
-
-                if ($risks->isEmpty()) {
-                    Log::channel('eliteupdate')->info('policy_risk_cert_airworthiness_update', [
-                        'ip'        => $ip,
-                        'policy_no' => $policyNo,
-                        'policy_id' => $policy->id,
-                        'result'    => 'risk_not_found',
-                    ]);
-
-                    return ['status' => 'not_found', 'message' => 'No risk record found for this policy.'];
-                }
-
-                if ($risks->count() > 1) {
-                    Log::channel('eliteupdate')->info('policy_risk_cert_airworthiness_update', [
-                        'ip'        => $ip,
-                        'policy_no' => $policyNo,
-                        'policy_id' => $policy->id,
-                        'risk_ids'  => $risks->pluck('id'),
-                        'result'    => 'ambiguous',
-                    ]);
-
-                    return ['status' => 'conflict', 'message' => 'Multiple risk records found for this policy; cannot determine which to update.'];
-                }
-
-                $risk = $risks->first();
-
-                DB::connection('Elite')
-                    ->table('epgi_policy_risk')
-                    ->where('id', $risk->id)
-                    ->update(['cert_airworthiness_no' => $newValue]);
-
-                Log::channel('eliteupdate')->info('policy_risk_cert_airworthiness_update', [
-                    'ip'        => $ip,
-                    'policy_no' => $policyNo,
-                    'policy_id' => $policy->id,
-                    'risk_id'   => $risk->id,
-                    'old_value' => $risk->cert_airworthiness_no,
-                    'new_value' => $newValue,
-                    'result'    => 'success',
-                ]);
-
-                return [
-                    'status'  => 'success',
-                    'message' => 'Airworthiness certificate number updated.',
-                    'data'    => ['policy_no' => $policyNo, 'cert_airworthiness_no' => $newValue],
-                ];
-            });
+            $result = $this->applyCertAirworthinessUpdate(
+                $request->input('policy_no'),
+                $request->input('item_id'),
+                $request->input('cert_airworthiness_no'),
+                $request->ip()
+            );
         } catch (\Exception $e) {
             Log::channel('eliteupdate')->info('policy_risk_cert_airworthiness_update', [
-                'ip'        => $ip,
-                'policy_no' => $policyNo,
+                'ip'        => $request->ip(),
+                'policy_no' => $request->input('policy_no'),
+                'item_id'   => $request->input('item_id'),
                 'result'    => 'db_error',
                 'error'     => $e->getMessage(),
             ]);
@@ -382,6 +416,67 @@ class ProxyController extends Controller
         };
 
         return response()->json(array_merge($result, ['data' => $result['data'] ?? []]), $httpStatus);
+    }
+
+    /**
+     * POST /api/elite/policy/risk/cert-airworthiness/batch
+     * Body: { "records": [{ "policy_no": "...", "item_id": "...", "cert_airworthiness_no": "..." }, ...] }
+     * Processes up to 500 records per call, each independently (one bad record
+     * doesn't affect the others). Intended for the one-time Motor backfill —
+     * always returns 200 with a per-record report, since a partial batch is
+     * expected, not a failure of the call itself.
+     */
+    public function updatePolicyRiskAirworthinessBatch(Request $request)
+    {
+        $request->validate([
+            'records'                               => 'required|array|min:1|max:500',
+            'records.*.policy_no'                   => 'required|string',
+            'records.*.item_id'                     => 'nullable|string|max:255',
+            'records.*.cert_airworthiness_no'       => 'required|string|max:255',
+        ]);
+
+        $ip      = $request->ip();
+        $summary = ['total' => 0, 'success' => 0, 'not_found' => 0, 'conflict' => 0, 'error' => 0];
+        $results = [];
+
+        foreach ($request->input('records') as $record) {
+            $summary['total']++;
+
+            try {
+                $result = $this->applyCertAirworthinessUpdate(
+                    $record['policy_no'],
+                    $record['item_id'] ?? null,
+                    $record['cert_airworthiness_no'],
+                    $ip
+                );
+            } catch (\Exception $e) {
+                Log::channel('eliteupdate')->info('policy_risk_cert_airworthiness_update', [
+                    'ip'        => $ip,
+                    'policy_no' => $record['policy_no'],
+                    'item_id'   => $record['item_id'] ?? null,
+                    'result'    => 'db_error',
+                    'error'     => $e->getMessage(),
+                ]);
+
+                $result = ['status' => 'error', 'message' => 'Elite DB update failed.'];
+            }
+
+            $summary[$result['status']] = ($summary[$result['status']] ?? 0) + 1;
+
+            $results[] = [
+                'policy_no' => $record['policy_no'],
+                'item_id'   => $record['item_id'] ?? null,
+                'status'    => $result['status'],
+                'message'   => $result['message'],
+            ];
+        }
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Batch processed.',
+            'summary' => $summary,
+            'results' => $results,
+        ]);
     }
 
     // ── Add other blocked API calls below as needed ───────────────────────────

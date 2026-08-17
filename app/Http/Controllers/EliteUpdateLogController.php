@@ -22,7 +22,7 @@ class EliteUpdateLogController extends Controller
                     break;
                 }
 
-                if (!preg_match('/^\[(?<ts>[^\]]+)\]\s+\S+\.\S+:\s+(?<message>[^{]+)(?<context>\{.*\})?$/', $line, $m)) {
+                if (!preg_match('/^\[(?<ts>[^\]]+)\]\s+\S+\.\S+:\s+(?<message>[^{]+)(?<context>\{.*\})?\s*$/', trim($line), $m)) {
                     continue;
                 }
 
@@ -35,6 +35,7 @@ class EliteUpdateLogController extends Controller
                     'message'   => trim($m['message']),
                     'ip'        => $context['ip'] ?? null,
                     'policy_no' => $context['policy_no'] ?? null,
+                    'item_id'   => $context['item_id'] ?? null,
                     'old_value' => $context['old_value'] ?? null,
                     'new_value' => $context['new_value'] ?? null,
                     'result'    => $context['result'] ?? null,
